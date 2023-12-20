@@ -1,0 +1,6 @@
+@AiKamu_HostAddress = http://localhost:5008
+
+GET {{AiKamu_HostAddress}}/
+Accept: application/json
+
+###
