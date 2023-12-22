@@ -8,6 +8,8 @@ namespace AiKamu.Commands.OpenAi;
 
 public class OpenAi(IOpenAiApi api) : ICommand
 {
+    private const string _chatRequest = "chat";
+    private const string _imageRequest = "draw";
     public bool IsPrivateResponse(SocketSlashCommandData data)
     {
         return (bool)(data.Options.FirstOrDefault(o => o.Name == SlashCommandConstants.OptionNameEphemeral)?.Value ?? false);
@@ -15,15 +17,27 @@ public class OpenAi(IOpenAiApi api) : ICommand
 
     public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, SocketSlashCommandData data)
     {
-        var prompt = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNamePrompt)?.Value as string;
+        var message = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNamePrompt)?.Value as string;
         var languageModel = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameLanguageModel)?.Value as string ?? SlashCommandConstants.OptionChoice35Turbo;
         
-        if (string.IsNullOrWhiteSpace(prompt))
+        if (string.IsNullOrWhiteSpace(message))
         {
             return new TextResponse(false, "Sorry, something went wrong. I can't see your message");
         }
 
-        (bool IsSuccess, OpenAiResponse? Response, OpenAIError? Error) = await GetChatCompletion(languageModel, prompt);
+        var messageType = await DetermineMessageType(message);
+
+        return messageType switch 
+        {
+            _chatRequest => await GetChatCompletionResponse(languageModel, message),
+            _imageRequest => await GetGeneratedImage(message),
+            _ => new TextResponse(false, "I am confuse. Could you try to ask another question?")
+        };
+    }
+
+    private async Task<TextResponse> GetChatCompletionResponse(string languageModel, string message)
+    {
+        (bool IsSuccess, OpenAiResponse? Response, OpenAIError? Error) = await GetChatCompletion(languageModel, GetDefaultMessage(message));
 
         if (IsSuccess && Response?.Choices != null)
         {
@@ -37,10 +51,34 @@ public class OpenAi(IOpenAiApi api) : ICommand
         return new TextResponse(false, "I am confuse. Could you try to ask another question?");
     }
 
-    private async Task<(bool IsSuccess, OpenAiResponse? Response, OpenAIError? error)> GetChatCompletion(string model, string prompt)
+    private async Task<IResponse> GetGeneratedImage(string prompt)
+    {
+        var (IsSuccess, Response, OpenAiErrorResponse) = await GetImageGenerations(prompt);
+        if (IsSuccess && Response?.Data is not null && Response.Data.Count != 0)
+        {
+            return new ImageResponse(true, Response.Data.FirstOrDefault()!.Url!, prompt);
+        }
+        else if (!IsSuccess)
+        {
+            return new TextResponse(false, $"Sorry, there are issues when trying to get response from OpenAI api. Error: {OpenAiErrorResponse?.Error?.ErrorType}");
+        }
+
+        return new TextResponse(false, "I am confuse. Could you try to ask another question?");
+    }
+
+    private static List<OpenAiMessage> GetDefaultMessage(string message)
+    {
+        return
+        [
+            new("system", "You are a Discord bot. Your name is AiKamu. You are a helpful assistant."),
+            new("user", message)
+        ];
+    }
+
+    private async Task<(bool IsSuccess, OpenAiResponse? Response, OpenAIError? error)> GetChatCompletion(string model, List<OpenAiMessage> messages)
     {
         var openAiRequest = new OpenAiRequest(model,
-                GetDefaultMessage(prompt),
+                messages,
                 0.5,
                 1000,
                 0.3,
@@ -72,12 +110,47 @@ public class OpenAi(IOpenAiApi api) : ICommand
         }
     }
 
-    private static List<OpenAiMessage> GetDefaultMessage(string prompt)
+    private async Task<(bool IsSuccess, ImageGenerationResponse? Response, OpenAIError? Error)> GetImageGenerations(string prompt)
     {
-        return
+        var openAIRequest = new ImageGenerationRequest("dall-e-3", prompt, 1, "1024x1024");
+        Log.Information("OpenAI Request {request}", JsonSerializer.Serialize(openAIRequest));
+
+        try
+        {
+            var response = await api.GenerateImages(openAIRequest);
+            Log.Information("OpenAI Response {response}", JsonSerializer.Serialize(response));
+            return new (true, response, null);
+        }
+        catch (ApiException exception)
+        {
+            if (!string.IsNullOrWhiteSpace(exception?.Content))
+            {
+                var error = JsonSerializer.Deserialize<OpenAIError>(exception.Content);
+                Log.Error(exception, exception.Content);
+                return new (false, null, error);
+            }
+            else
+            {
+                Log.Error(exception, exception?.Message ?? string.Empty);
+                return new (false, null, new OpenAIError { Error = new Error { Message = exception?.Message} });
+            }
+        }
+    }
+
+    private async Task<string> DetermineMessageType(string message)
+    {
+        List<OpenAiMessage> prompt =
         [
-            new("system", "You are a helpful assistant."),
-            new("user", prompt)
+            new("user", $"Determine the given message. Wether it's a normal chat or requesting to draw an imag. just response with 'chat' or 'draw'. If it's unclear, reply with 'none'. \"{message}\"")
         ];
+        
+        var (IsSuccess, Response, _) = await GetChatCompletion(SlashCommandConstants.OptionChoice35Turbo, prompt);
+
+        if (!IsSuccess)
+        {
+            return _chatRequest;
+        }
+
+        return Response?.Choices?.FirstOrDefault()?.Message?.Content ?? _chatRequest;
     }
 }
