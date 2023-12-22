@@ -109,25 +109,24 @@ public sealed class BotService(
         // Getting command based on slash command
         var command = serviceProvider.GetKeyedService<ICommand>(slashCommand.Data.Name);
 
-        if (command != null)
-        {
-            bool privateReply = command.IsPrivateResponse(slashCommand.Data);
-            try
-            {
-                // Thinking mode
-                await slashCommand.DeferAsync(ephemeral: privateReply);
-
-                var response = await command.GetResponseAsync(_client, slashCommand.Data);
-                await Reply(slashCommand, privateReply, response);
-            }
-            catch (Exception ex)
-            {
-                await slashCommand.FollowupAsync($"Can't process your command. Exception occured while processing {slashCommand.Data.Name}. {ex.Message} ", ephemeral: true);
-            }
-        }
-        else
+        if (command == null)
         {
             await slashCommand.FollowupAsync($"Can't process your command. Can't find Command handler with name {slashCommand.Data.Name} ", ephemeral: true);
+            return;
+        }
+
+        bool privateReply = command.IsPrivateResponse(slashCommand.Data);
+        try
+        {
+            // Thinking mode
+            await slashCommand.DeferAsync(ephemeral: privateReply);
+
+            var response = await command.GetResponseAsync(_client, slashCommand.Data);
+            await Reply(slashCommand, privateReply, response);
+        }
+        catch (Exception ex)
+        {
+            await slashCommand.FollowupAsync($"Can't process your command. Exception occured while processing {slashCommand.Data.Name}. {ex.Message} ", ephemeral: true);
         }
     }
 
@@ -291,5 +290,5 @@ public sealed class BotService(
                     .WithType(ApplicationCommandOptionType.String));
 
         await guild.CreateApplicationCommandAsync(guildCommand.Build());
-    }    
+    }
 }
