@@ -115,13 +115,13 @@ public sealed class BotService(
             return;
         }
 
-        bool privateReply = command.IsPrivateResponse(slashCommand.Data);
+        bool privateReply = command.IsPrivateResponse(new CommandArgs(slashCommand.Data));
         try
         {
             // Thinking mode
             await slashCommand.DeferAsync(ephemeral: privateReply);
 
-            var response = await command.GetResponseAsync(_client, slashCommand.Data);
+            var response = await command.GetResponseAsync(_client, new CommandArgs(slashCommand.Data));
             await Reply(slashCommand, privateReply, response);
         }
         catch (Exception ex)

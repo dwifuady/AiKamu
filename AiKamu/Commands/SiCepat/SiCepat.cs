@@ -12,14 +12,14 @@ public class SiCepat : ICommand
         _siCepatApi = siCepatApi;
     }
 
-    public bool IsPrivateResponse(SocketSlashCommandData data)
+    public bool IsPrivateResponse(CommandArgs commandArgs)
     {
         return true;
     }
 
-    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, SocketSlashCommandData data)
+    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        var trackingNumber = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameTrackingNumber)?.Value as string;
+        var trackingNumber = commandArgs.Args[SlashCommandConstants.OptionNameTrackingNumber] as string;
 
         if (string.IsNullOrWhiteSpace(trackingNumber))
         {

@@ -10,15 +10,15 @@ public class OpenAi(IOpenAiApi api) : ICommand
 {
     private const string _chatRequest = "chat";
     private const string _imageRequest = "draw";
-    public bool IsPrivateResponse(SocketSlashCommandData data)
+    public bool IsPrivateResponse(CommandArgs commandArgs)
     {
-        return (bool)(data.Options.FirstOrDefault(o => o.Name == SlashCommandConstants.OptionNameEphemeral)?.Value ?? false);
+        return commandArgs.IsPrivateResponse;
     }
 
-    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, SocketSlashCommandData data)
+    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        var message = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNamePrompt)?.Value as string;
-        var languageModel = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameLanguageModel)?.Value as string ?? SlashCommandConstants.OptionChoice35Turbo;
+        var message = commandArgs.Args[SlashCommandConstants.OptionNamePrompt] as string;
+        var languageModel = commandArgs.Args[SlashCommandConstants.OptionNameLanguageModel] as string ?? SlashCommandConstants.OptionChoice35Turbo;
         
         if (string.IsNullOrWhiteSpace(message))
         {
@@ -70,7 +70,7 @@ public class OpenAi(IOpenAiApi api) : ICommand
     {
         return
         [
-            new("system", "You are a Discord bot. Your name is AiKamu. You are a helpful assistant."),
+            new("system", "You are a Discord bot. Your name is AiKamu, usually called Ai. You are a helpful assistant."),
             new("user", message)
         ];
     }
