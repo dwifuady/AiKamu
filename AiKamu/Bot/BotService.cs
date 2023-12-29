@@ -15,7 +15,8 @@ public sealed class BotService(
     IServiceProvider serviceProvider,
     IOptions<DiscordBotConfig> discordBotConfig,
     ISlashCommandReplier slashCommandReplier,
-    IMessageReplier messageReplier) : IHostedService
+    IMessageReplier messageReplier,
+    IServiceScopeFactory scopeFactory) : IHostedService
 {
     private DiscordSocketClient? _client;
     private DiscordBotConfig? _botConfig;
@@ -128,7 +129,6 @@ public sealed class BotService(
             var response = await command.GetResponseAsync(_client, commandArgs);
 
             await slashCommandReplier.Reply(slashCommand, privateReply, response);
-            // await ReplySlashCommand(slashCommand, privateReply, response);
         }
         catch (Exception ex)
         {
@@ -156,7 +156,71 @@ public sealed class BotService(
             Log.Information("Received a '{messageText}' message from {user} in chat {ChannelName}.", message.Content, message.Author.Username, message.Channel.Name);
         }
 
-        var commandArgs = message.Content.Parse<CommandArgs>();
+        if (message.Reference?.MessageId is not null && await message.Channel.GetMessageAsync(message.Reference.MessageId.Value) is { } repliedMessage)
+        {
+            await HandleConversation(message, repliedMessage);
+        }
+        else
+        {
+            var commandArgs = message.Content.Parse<CommandArgs>();
+            await HandleFirstCallCommand(message, commandArgs);
+        }
+    }
+
+    private async Task HandleFirstCallCommand(SocketMessage message, CommandArgs commandArgs)
+    {
+        // Getting command based on prefix
+        var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
+
+        if (command == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await SaveInitialConversation(message.Id, commandArgs);
+
+            var response = await command.GetResponseAsync(_client!, commandArgs);
+            await messageReplier.Reply(message, response);
+
+        }
+        catch (Exception ex)
+        {
+            await message.Channel.SendMessageAsync($"Can't process your command. Exception occured while processing your request. {ex.Message} ", messageReference: new MessageReference(messageId: message.Id));
+        }
+    }
+
+    private async Task HandleConversation(SocketMessage message, IMessage repliedMessage)
+    {
+        using var scope = scopeFactory.CreateScope();
+
+        var appDbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var messageChain = appDbContext.MessageChains.SingleOrDefault(r => r.Id == repliedMessage.Id);
+
+        if (messageChain == null)
+        {
+            return;
+        }
+
+        var conversation = appDbContext.Conversations.SingleOrDefault(c => c.Id == messageChain.ConversationId);
+
+        if (conversation == null)
+        {
+            return;
+        }
+
+        var chains = appDbContext
+            .MessageChains
+            .Where(m => m.ConversationId == conversation.Id)
+            .ToList()
+            .OrderBy(m => m.Id)
+            .Select(o => new KeyValuePair<string, string>(o.Role, o.Content!)).ToList();
+
+        chains.Add(new(RoleConstants.RoleUser, message.CleanContent));
+
+        var commandArgs = new CommandArgs(chains, conversation.Command!);
 
         // Getting command based on prefix
         var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
@@ -168,6 +232,18 @@ public sealed class BotService(
 
         try
         {
+            var newMessageChain = new MessageChain
+            {
+                Id = message.Id,
+                ConversationId = conversation.Id,
+                Content = message.CleanContent,
+                Role = RoleConstants.RoleUser
+            };
+
+            appDbContext.MessageChains.Add(newMessageChain);
+
+            await appDbContext.SaveChangesAsync();
+
             var response = await command.GetResponseAsync(_client!, commandArgs);
             await messageReplier.Reply(message, response);
         }
@@ -175,8 +251,33 @@ public sealed class BotService(
         {
             await message.Channel.SendMessageAsync($"Can't process your command. Exception occured while processing your request. {ex.Message} ", messageReference: new MessageReference(messageId: message.Id));
         }
+    }
 
-        return;
+    private async Task SaveInitialConversation(ulong id, CommandArgs commandArgs)
+    {
+        using var scope = scopeFactory.CreateScope();
+
+        var appDbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var conversation = new Conversation
+        {
+            Command = commandArgs.CommandName
+        };
+
+        appDbContext.Conversations.Add(conversation);
+        await appDbContext.SaveChangesAsync();
+
+        var messageChain = new MessageChain
+        {
+            Id = id,
+            ConversationId = conversation.Id,
+            Content = commandArgs.Args[SlashCommandConstants.OptionNameMessage] as string,
+            Role = RoleConstants.RoleUser
+        };
+
+        appDbContext.MessageChains.Add(messageChain);
+
+        await appDbContext.SaveChangesAsync();
     }
 
     /// <summary>

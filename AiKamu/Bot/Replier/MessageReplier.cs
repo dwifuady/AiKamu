@@ -6,7 +6,9 @@ using Serilog;
 
 namespace AiKamu.Bot.Replier;
 
-public class MessageReplier(IHttpClientFactory httpClientFactory) : IMessageReplier
+public class MessageReplier(
+    IHttpClientFactory httpClientFactory,
+    IServiceScopeFactory scopeFactory) : IMessageReplier
 {
     private const int maxMessageLength = 1990; //max lenght is 2000, but we reduce this so we can add something like (1/3) prefix on every message
     public async Task Reply(SocketMessage message, IResponse response)
@@ -36,6 +38,8 @@ public class MessageReplier(IHttpClientFactory httpClientFactory) : IMessageRepl
                         }
                         var sentMessage = await message.Channel.SendMessageAsync(prefix + responseMessage, messageReference: new MessageReference(messageId: message.Id));
                         currentMessage++;
+
+                        await SaveBotReplyMessage(sentMessage.Id, message.Id, textResponse);
                     }
                     break;
                 }
@@ -101,6 +105,35 @@ public class MessageReplier(IHttpClientFactory httpClientFactory) : IMessageRepl
         {
             Log.Error(ex, $"Failed to download file from {fileUrl}");
             throw;
+        }
+    }
+
+    private async Task SaveBotReplyMessage(ulong id, ulong replyToId, IResponse response)
+    {
+        if (response is not TextResponse textResponse)
+        {
+            return;
+        }
+
+        using var scope = scopeFactory.CreateScope();
+
+        var appDbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var conversationId = appDbContext.MessageChains.FirstOrDefault(m => m.Id == replyToId)?.ConversationId;
+
+        if (conversationId.HasValue)
+        {
+            var messageChain = new MessageChain
+            {
+                Id = id,
+                ConversationId = conversationId.Value,
+                Content = textResponse.Message,
+                Role = RoleConstants.RoleAssistant
+            };
+
+            appDbContext.MessageChains.Add(messageChain);
+
+            await appDbContext.SaveChangesAsync();
         }
     }
 }

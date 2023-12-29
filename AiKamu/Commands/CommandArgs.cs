@@ -9,6 +9,15 @@ public class CommandArgs : IParsable<CommandArgs>
     private readonly SocketSlashCommandData? _slashCommandData;
     private readonly Dictionary<string, object> _commandOptions;
 
+    public CommandArgs(List<KeyValuePair<string, string>> conversations, string commandName)
+    {
+        _commandOptions = new Dictionary<string, object>
+        {
+            { SlashCommandConstants.OptionNameConversation, conversations }
+        };
+        CommandName = commandName;
+    }
+
     public CommandArgs(SocketSlashCommandData slashCommandData, string commandName)
     {
         _slashCommandData = slashCommandData;
