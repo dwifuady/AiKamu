@@ -23,6 +23,7 @@ public static class SlashCommandConstants
     public const string OptionChoice35TurboDesc = "GPT-3.5 Turbo. Faster";
     public const string OptionChoice4Turbo = "gpt-4-1106-preview";
     public const string OptionChoice4TurboDesc = "GPT-4 Turbo. Fresher knowledge and the broadest set of capabilities";
+    public const string OptionNameConversation = "conversation";
 
     // SiCepat
     public const string CommandNameSicepat = "sicepat";

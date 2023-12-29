@@ -19,28 +19,57 @@ public class OpenAi(IOpenAiApi api) : ICommand
     {
         Log.Information("[{Command}] GetResponseAsync, Args {args}", nameof(OpenAi), JsonSerializer.Serialize(commandArgs.Args));
 
-        var message = commandArgs.Args[SlashCommandConstants.OptionNameMessage] as string;
+        _ = commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameConversation, out object? messageChainObj);
         _ = commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameLanguageModel, out object? model);
         var languageModel = model as string ?? SlashCommandConstants.OptionChoice35Turbo;
 
-        if (string.IsNullOrWhiteSpace(message))
+        string messageType = _chatRequest;
+
+        // conversation
+        if (messageChainObj != null)
         {
-            return new TextResponse(false, "Sorry, something went wrong. I can't see your message");
+            var conversations = messageChainObj as List<KeyValuePair<string, string>>;
+            return await GetChatCompletionConversationResponse(languageModel, conversations!);
         }
-
-        var messageType = await DetermineMessageType(message);
-
-        return messageType switch 
+        else
         {
-            _chatRequest => await GetChatCompletionResponse(languageModel, message),
-            _imageRequest => await GetGeneratedImage(message),
-            _ => new TextResponse(false, "I am confuse. Could you try to ask another question?")
-        };
+            var message = commandArgs.Args[SlashCommandConstants.OptionNameMessage] as string;
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return new TextResponse(false, "Sorry, something went wrong. I can't see your message");
+            }
+
+            messageType = await DetermineMessageType(message);
+
+            return messageType switch 
+            {
+                _chatRequest => await GetChatCompletionResponse(languageModel, message),
+                _imageRequest => await GetGeneratedImage(message),
+                _ => new TextResponse(false, "I am confuse. Could you try to ask another question?")
+            };
+        }
     }
 
     private async Task<TextResponse> GetChatCompletionResponse(string languageModel, string message)
     {
         (bool IsSuccess, OpenAiResponse? Response, OpenAIError? Error) = await GetChatCompletion(languageModel, GetDefaultMessage(message));
+
+        if (IsSuccess && Response?.Choices != null)
+        {
+            return new TextResponse(true, Response.Choices?.FirstOrDefault()?.Message?.Content ?? "");
+        }
+        else if (!IsSuccess)
+        {
+            return new TextResponse(false, $"Sorry, there are issues when trying to get response from OpenAI api. Error: {Error?.Error?.ErrorType}");
+        }
+
+        return new TextResponse(false, "I am confuse. Could you try to ask another question?");
+    }
+
+    private async Task<TextResponse> GetChatCompletionConversationResponse(string languageModel, List<KeyValuePair<string, string>> messages)
+    {
+        (bool IsSuccess, OpenAiResponse? Response, OpenAIError? Error) = await GetChatCompletion(languageModel, GetDefaultMessageFromConversation(messages));
 
         if (IsSuccess && Response?.Choices != null)
         {
@@ -76,6 +105,21 @@ public class OpenAi(IOpenAiApi api) : ICommand
             new("system", "You are a Discord bot. Your name is AiKamu, usually called Ai. You are a helpful assistant."),
             new("user", message)
         ];
+    }
+
+    private static List<OpenAiMessage> GetDefaultMessageFromConversation(List<KeyValuePair<string, string>> conversations)
+    {
+        var messages = new List<OpenAiMessage>
+        {
+            new("system", "You are a Discord bot. Your name is AiKamu, usually called Ai. You are a helpful assistant.")
+        };
+
+        foreach (var conversation in conversations)
+        {
+            messages.Add(new(conversation.Key, conversation.Value));
+        }
+
+        return messages;
     }
 
     private async Task<(bool IsSuccess, OpenAiResponse? Response, OpenAIError? error)> GetChatCompletion(string model, List<OpenAiMessage> messages)
