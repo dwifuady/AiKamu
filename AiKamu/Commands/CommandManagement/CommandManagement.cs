@@ -83,14 +83,14 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
                 .WithDescription("Talk or ask to draw an image to ChatGPT. This command does not support conversation.")
                 .AddOption(
                     new SlashCommandOptionBuilder()
-                        .WithName(SlashCommandConstants.OptionNamePrompt)
+                        .WithName(SlashCommandConstants.OptionNameMessage)
                         .WithDescription("What do you want to ask?")
                         .WithRequired(true)
                         .WithType(ApplicationCommandOptionType.String))
                 .AddOption(
                     new SlashCommandOptionBuilder()
                         .WithName(SlashCommandConstants.OptionNameEphemeral)
-                        .WithDescription("Show the reply only to you?")
+                        .WithDescription("Show the reply only to you? Default is true")
                         .WithRequired(false)
                         .WithType(ApplicationCommandOptionType.Boolean))
                 .AddOption(

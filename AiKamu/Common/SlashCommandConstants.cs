@@ -16,7 +16,7 @@ public static class SlashCommandConstants
 
     // OpenAi
     public const string CommandNameAI = "ai";
-    public const string OptionNamePrompt = "message";
+    public const string OptionNameMessage = "message";
     public const string OptionNameEphemeral = "private";
     public const string OptionNameLanguageModel = "model";
     public const string OptionChoice35Turbo = "gpt-3.5-turbo-1106";

@@ -7,15 +7,16 @@ using Serilog.Events;
 using AiKamu.Commands;
 using AiKamu.Common;
 using Microsoft.Extensions.Options;
+using AiKamu.Bot.Replier;
 
 namespace AiKamu.Bot;
 
 public sealed class BotService(
     IServiceProvider serviceProvider,
-    IHttpClientFactory httpClientFactory,
-    IOptions<DiscordBotConfig> discordBotConfig) : IHostedService
+    IOptions<DiscordBotConfig> discordBotConfig,
+    ISlashCommandReplier slashCommandReplier,
+    IMessageReplier messageReplier) : IHostedService
 {
-    private const int maxMessageLength = 1990; //max lenght is 2000, but we reduce this so we can add something like (1/3) prefix on every message
     private DiscordSocketClient? _client;
     private DiscordBotConfig? _botConfig;
 
@@ -106,8 +107,11 @@ public sealed class BotService(
             return;
         }
 
+        var commandArgs = new CommandArgs(slashCommand.Data, slashCommand.Data.Name);
+        Log.Information("Command {commandName} called by {userName}. CommandArgs {args}", commandArgs.CommandName, slashCommand.User.Username, JsonConvert.SerializeObject(commandArgs));
+
         // Getting command based on slash command
-        var command = serviceProvider.GetKeyedService<ICommand>(slashCommand.Data.Name);
+        var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
 
         if (command == null)
         {
@@ -115,26 +119,33 @@ public sealed class BotService(
             return;
         }
 
-        bool privateReply = command.IsPrivateResponse(new CommandArgs(slashCommand.Data));
+        bool privateReply = command.IsPrivateResponse(commandArgs);
         try
         {
             // Thinking mode
             await slashCommand.DeferAsync(ephemeral: privateReply);
 
-            var response = await command.GetResponseAsync(_client, new CommandArgs(slashCommand.Data));
-            await Reply(slashCommand, privateReply, response);
+            var response = await command.GetResponseAsync(_client, commandArgs);
+
+            await slashCommandReplier.Reply(slashCommand, privateReply, response);
+            // await ReplySlashCommand(slashCommand, privateReply, response);
         }
         catch (Exception ex)
         {
-            await slashCommand.FollowupAsync($"Can't process your command. Exception occured while processing {slashCommand.Data.Name}. {ex.Message} ", ephemeral: true);
+            await slashCommand.RespondAsync($"Can't process your command. Exception occured while processing {slashCommand.Data.Name}. {ex.Message} ", ephemeral: true);
         }
     }
 
-    private Task MessageReceivedAsync(SocketMessage message)
+    private async Task MessageReceivedAsync(SocketMessage message)
     {
+        if (_client is null)
+        {
+            return;
+        }
+
         // The bot should never respond to itself.
         if (message.Author.Id == _client?.CurrentUser.Id)
-            return Task.CompletedTask;
+            return;
 
         if (message.Channel is SocketGuildChannel socketGuildChannel)
         {
@@ -144,104 +155,29 @@ public sealed class BotService(
         {
             Log.Information("Received a '{messageText}' message from {user} in chat {ChannelName}.", message.Content, message.Author.Username, message.Channel.Name);
         }
-        return Task.CompletedTask;
-    }
 
-    private async Task Reply(SocketSlashCommand slashCommand, bool privateReply, IResponse response)
-    {
-        switch (response)
+        var commandArgs = message.Content.Parse<CommandArgs>();
+
+        // Getting command based on prefix
+        var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
+
+        if (command == null)
         {
-            case ITextResponse textResponse:
-                {
-                    var messages = textResponse.Message?.Chunk(maxMessageLength)
-                            .Select(s => new string(s))
-                            .ToList();
-
-                    var messagesCount = messages?.Count;
-
-                    if (messages == null || messagesCount == 0)
-                    {
-                        break;
-                    }
-
-                    int currentMessage = 1;
-                    foreach (var responseMessage in messages)
-                    {
-                        var prefix = string.Empty;
-                        if (messagesCount > 1)
-                        {
-                            prefix = $"({currentMessage}/{messagesCount}) {Environment.NewLine}";
-                        }
-                        var sentMessage = await slashCommand.FollowupAsync(prefix + responseMessage, ephemeral: privateReply);
-                        currentMessage++;
-                    }
-                    break;
-                }
-            case IFileResponse or IImageResponse:
-                {
-                    var sourceUrl = string.Empty;
-                    var caption = string.Empty;
-                    if (response is IFileResponse fileResponse)
-                    {
-                        sourceUrl = fileResponse.SourceUrl;
-                        caption = fileResponse.Caption;
-                    }
-                    else if (response is IImageResponse imageResponse)
-                    {
-                        sourceUrl = imageResponse.ImageUrl;
-                        caption = imageResponse.Caption;
-                    }
-                    if (!string.IsNullOrWhiteSpace(sourceUrl))
-                    {
-                        if (!await SendFile(sourceUrl, caption, privateReply, slashCommand))
-                        {
-                            await slashCommand.FollowupAsync("Error generating your image, please try again later.", ephemeral: privateReply);
-                        }
-                    }
-                    else
-                    {
-                        await slashCommand.FollowupAsync("Error generating your image, please try again later.", ephemeral: privateReply);
-                    }
-                    break;
-                }
+            return;
         }
-    }
 
-    private async Task<bool> SendFile(string fileUrl, string? caption, bool privateReply, SocketSlashCommand message)
-    {
         try
         {
-            var httpClient = httpClientFactory.CreateClient();
-            var httpResponse = await httpClient.GetAsync(fileUrl);
-
-            if (!httpResponse.IsSuccessStatusCode)
-            {
-                return false;
-            }
-
-            var contentType = httpResponse.Content.Headers.ContentType?.MediaType;
-
-            if (string.IsNullOrWhiteSpace(contentType) || (!contentType.StartsWith("image/") && !contentType.StartsWith("video/")))
-            {
-                Log.Error($"Response from {fileUrl} was not an image or video");
-                return false;
-            }
-
-            var fileStream = await httpResponse.Content.ReadAsStreamAsync();
-            var fileExtension = FileHelper.GetFileExtension(contentType);
-            var fileName = $"{Guid.NewGuid()}{fileExtension}";
-
-            await message.FollowupWithFileAsync(new FileAttachment(fileStream, fileName), text: caption, ephemeral: privateReply);
-
-            return true;
+            var response = await command.GetResponseAsync(_client!, commandArgs);
+            await messageReplier.Reply(message, response);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            Log.Error(ex, $"Failed to download file from {fileUrl}");
-            throw;
+            await message.Channel.SendMessageAsync($"Can't process your command. Exception occured while processing your request. {ex.Message} ", messageReference: new MessageReference(messageId: message.Id));
         }
-    }
 
+        return;
+    }
 
     /// <summary>
     /// This is to create a Default Command to manage Guild Command

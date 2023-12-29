@@ -17,9 +17,12 @@ public class OpenAi(IOpenAiApi api) : ICommand
 
     public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        var message = commandArgs.Args[SlashCommandConstants.OptionNamePrompt] as string;
-        var languageModel = commandArgs.Args[SlashCommandConstants.OptionNameLanguageModel] as string ?? SlashCommandConstants.OptionChoice35Turbo;
-        
+        Log.Information("[{Command}] GetResponseAsync, Args {args}", nameof(OpenAi), JsonSerializer.Serialize(commandArgs.Args));
+
+        var message = commandArgs.Args[SlashCommandConstants.OptionNameMessage] as string;
+        _ = commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameLanguageModel, out object? model);
+        var languageModel = model as string ?? SlashCommandConstants.OptionChoice35Turbo;
+
         if (string.IsNullOrWhiteSpace(message))
         {
             return new TextResponse(false, "Sorry, something went wrong. I can't see your message");
@@ -141,7 +144,7 @@ public class OpenAi(IOpenAiApi api) : ICommand
     {
         List<OpenAiMessage> prompt =
         [
-            new("user", $"Determine the given message. Wether it's a normal chat or requesting to draw an imag. just response with 'chat' or 'draw'. If it's unclear, reply with 'none'. \"{message}\"")
+            new("user", $"Determine the given message. Wether it's a normal chat or requesting to draw an image. just response with 'chat' or 'draw'. If it's unclear, reply with 'none'. \"{message}\"")
         ];
         
         var (IsSuccess, Response, _) = await GetChatCompletion(SlashCommandConstants.OptionChoice35Turbo, prompt);
