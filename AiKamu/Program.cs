@@ -3,6 +3,7 @@ using AiKamu.Bot;
 using AiKamu.Commands.OpenAi;
 using AiKamu.Commands.AddCommand;
 using AiKamu.Commands.SiCepat;
+using AiKamu.Bot.Replier;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +34,8 @@ builder.Services.Configure<SiCepatConfig>(configuration.GetSection("SiCepatConfi
 // Add services to the container.
 builder.Services.AddSingleton<BotService>();
 builder.Services.AddHostedService<BotService>();
+builder.Services.AddSingleton<ISlashCommandReplier, SlashCommandReplier>();
+builder.Services.AddSingleton<IMessageReplier, MessageReplier>();
 builder.Services.AddHttpClient();
 
 #region Commands

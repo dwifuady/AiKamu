@@ -10,16 +10,19 @@ public class OpenAi(IOpenAiApi api) : ICommand
 {
     private const string _chatRequest = "chat";
     private const string _imageRequest = "draw";
-    public bool IsPrivateResponse(SocketSlashCommandData data)
+    public bool IsPrivateResponse(CommandArgs commandArgs)
     {
-        return (bool)(data.Options.FirstOrDefault(o => o.Name == SlashCommandConstants.OptionNameEphemeral)?.Value ?? false);
+        return commandArgs.IsPrivateResponse;
     }
 
-    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, SocketSlashCommandData data)
+    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        var message = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNamePrompt)?.Value as string;
-        var languageModel = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameLanguageModel)?.Value as string ?? SlashCommandConstants.OptionChoice35Turbo;
-        
+        Log.Information("[{Command}] GetResponseAsync, Args {args}", nameof(OpenAi), JsonSerializer.Serialize(commandArgs.Args));
+
+        var message = commandArgs.Args[SlashCommandConstants.OptionNameMessage] as string;
+        _ = commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameLanguageModel, out object? model);
+        var languageModel = model as string ?? SlashCommandConstants.OptionChoice35Turbo;
+
         if (string.IsNullOrWhiteSpace(message))
         {
             return new TextResponse(false, "Sorry, something went wrong. I can't see your message");
@@ -70,7 +73,7 @@ public class OpenAi(IOpenAiApi api) : ICommand
     {
         return
         [
-            new("system", "You are a Discord bot. Your name is AiKamu. You are a helpful assistant."),
+            new("system", "You are a Discord bot. Your name is AiKamu, usually called Ai. You are a helpful assistant."),
             new("user", message)
         ];
     }
@@ -141,7 +144,7 @@ public class OpenAi(IOpenAiApi api) : ICommand
     {
         List<OpenAiMessage> prompt =
         [
-            new("user", $"Determine the given message. Wether it's a normal chat or requesting to draw an imag. just response with 'chat' or 'draw'. If it's unclear, reply with 'none'. \"{message}\"")
+            new("user", $"Determine the given message. Wether it's a normal chat or requesting to draw an image. just response with 'chat' or 'draw'. If it's unclear, reply with 'none'. \"{message}\"")
         ];
         
         var (IsSuccess, Response, _) = await GetChatCompletion(SlashCommandConstants.OptionChoice35Turbo, prompt);

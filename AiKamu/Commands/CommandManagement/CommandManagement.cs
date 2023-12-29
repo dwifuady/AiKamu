@@ -10,14 +10,14 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 {
     private readonly DiscordBotConfig _botConfig = options.Value;
 
-    public bool IsPrivateResponse(SocketSlashCommandData data)
+    public bool IsPrivateResponse(CommandArgs commandArgs)
     {
         return true;
     }
 
-    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, SocketSlashCommandData data)
+    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        _ = ulong.TryParse(data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameGuildId)?.Value as string, out var guildId);
+        _ = ulong.TryParse(commandArgs.Args[SlashCommandConstants.OptionNameGuildId] as string, out var guildId);
         
         if (guildId <= 0)
         {
@@ -31,9 +31,9 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
             return new TextResponse(false, $"Guild {guildId} is an invalid guild");
         }
 
-        var action = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameCommandAction)?.Value as string;
+        var action = commandArgs.Args[SlashCommandConstants.OptionNameCommandAction] as string;
         
-        if (data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameCommandName)?.Value is not string commandName)
+        if (commandArgs.Args[SlashCommandConstants.OptionNameCommandName] is not string commandName)
         {
             return new TextResponse(false, $"{SlashCommandConstants.OptionNameCommandName} is required.");
         }
@@ -83,14 +83,14 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
                 .WithDescription("Talk or ask to draw an image to ChatGPT. This command does not support conversation.")
                 .AddOption(
                     new SlashCommandOptionBuilder()
-                        .WithName(SlashCommandConstants.OptionNamePrompt)
+                        .WithName(SlashCommandConstants.OptionNameMessage)
                         .WithDescription("What do you want to ask?")
                         .WithRequired(true)
                         .WithType(ApplicationCommandOptionType.String))
                 .AddOption(
                     new SlashCommandOptionBuilder()
                         .WithName(SlashCommandConstants.OptionNameEphemeral)
-                        .WithDescription("Show the reply only to you?")
+                        .WithDescription("Show the reply only to you? Default is true")
                         .WithRequired(false)
                         .WithType(ApplicationCommandOptionType.Boolean))
                 .AddOption(
