@@ -128,7 +128,8 @@ public class MessageReplier(
                 Id = id,
                 ConversationId = conversationId.Value,
                 Content = textResponse.Message,
-                Role = RoleConstants.RoleAssistant
+                Role = RoleConstants.RoleAssistant,
+                ReplyToId = replyToId
             };
 
             appDbContext.MessageChains.Add(messageChain);

@@ -6,7 +6,9 @@ using Serilog;
 
 namespace AiKamu.Bot.Replier;
 
-public class SlashCommandReplier(IHttpClientFactory httpClientFactory) : ISlashCommandReplier
+public class SlashCommandReplier(
+    IHttpClientFactory httpClientFactory,
+    IServiceScopeFactory scopeFactory) : ISlashCommandReplier
 {
     private const int maxMessageLength = 1990; //max lenght is 2000, but we reduce this so we can add something like (1/3) prefix on every message
 
@@ -37,6 +39,11 @@ public class SlashCommandReplier(IHttpClientFactory httpClientFactory) : ISlashC
                         }
                         var sentMessage = await slashCommand.FollowupAsync(prefix + responseMessage, ephemeral: privateReply);
                         currentMessage++;
+
+                        if (!privateReply)
+                        {
+                            await SaveBotReplyMessage(sentMessage.Id, slashCommand.Id, textResponse);
+                        }
                     }
                     break;
                 }
@@ -102,6 +109,36 @@ public class SlashCommandReplier(IHttpClientFactory httpClientFactory) : ISlashC
         {
             Log.Error(ex, $"Failed to download file from {fileUrl}");
             throw;
+        }
+    }
+
+    private async Task SaveBotReplyMessage(ulong id, ulong replyToId, IResponse response)
+    {
+        if (response is not TextResponse textResponse)
+        {
+            return;
+        }
+
+        using var scope = scopeFactory.CreateScope();
+
+        var appDbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var conversationId = appDbContext.MessageChains.FirstOrDefault(m => m.Id == replyToId)?.ConversationId;
+
+        if (conversationId.HasValue)
+        {
+            var messageChain = new MessageChain
+            {
+                Id = id,
+                ConversationId = conversationId.Value,
+                Content = textResponse.Message,
+                Role = RoleConstants.RoleAssistant,
+                ReplyToId = replyToId
+            };
+
+            appDbContext.MessageChains.Add(messageChain);
+
+            await appDbContext.SaveChangesAsync();
         }
     }
 }

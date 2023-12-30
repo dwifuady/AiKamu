@@ -126,6 +126,12 @@ public sealed class BotService(
             // Thinking mode
             await slashCommand.DeferAsync(ephemeral: privateReply);
 
+            // save conversation if it's not a private reply
+            if (!privateReply)
+            {
+                await SaveInitialConversation(slashCommand.Id, commandArgs);
+            }
+
             var response = await command.GetResponseAsync(_client, commandArgs);
 
             await slashCommandReplier.Reply(slashCommand, privateReply, response);
@@ -199,7 +205,8 @@ public sealed class BotService(
 
         var messageChain = appDbContext.MessageChains.SingleOrDefault(r => r.Id == repliedMessage.Id);
 
-        if (messageChain == null)
+        // Ignore if it's not a reply to the bot
+        if (messageChain == null || messageChain.Role == RoleConstants.RoleUser)
         {
             return;
         }
