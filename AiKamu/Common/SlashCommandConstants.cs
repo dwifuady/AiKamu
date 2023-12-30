@@ -16,13 +16,14 @@ public static class SlashCommandConstants
 
     // OpenAi
     public const string CommandNameAI = "ai";
-    public const string OptionNamePrompt = "prompt";
+    public const string OptionNameMessage = "message";
     public const string OptionNameEphemeral = "private";
     public const string OptionNameLanguageModel = "model";
     public const string OptionChoice35Turbo = "gpt-3.5-turbo-1106";
     public const string OptionChoice35TurboDesc = "GPT-3.5 Turbo. Faster";
     public const string OptionChoice4Turbo = "gpt-4-1106-preview";
     public const string OptionChoice4TurboDesc = "GPT-4 Turbo. Fresher knowledge and the broadest set of capabilities";
+    public const string OptionNameConversation = "conversation";
 
     // SiCepat
     public const string CommandNameSicepat = "sicepat";

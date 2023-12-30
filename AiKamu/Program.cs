@@ -3,6 +3,10 @@ using AiKamu.Bot;
 using AiKamu.Commands.OpenAi;
 using AiKamu.Commands.AddCommand;
 using AiKamu.Commands.SiCepat;
+using AiKamu.Bot.Replier;
+using Microsoft.EntityFrameworkCore;
+using FluentMigrator.Runner;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +37,8 @@ builder.Services.Configure<SiCepatConfig>(configuration.GetSection("SiCepatConfi
 // Add services to the container.
 builder.Services.AddSingleton<BotService>();
 builder.Services.AddHostedService<BotService>();
+builder.Services.AddSingleton<ISlashCommandReplier, SlashCommandReplier>();
+builder.Services.AddSingleton<IMessageReplier, MessageReplier>();
 builder.Services.AddHttpClient();
 
 #region Commands
@@ -49,9 +55,32 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 #endregion
 
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite("Data Source=app.db"));
+builder.Services.AddLogging(c => c.AddFluentMigratorConsole())
+    .AddFluentMigratorCore()
+    .ConfigureRunner(
+        r => r.AddSQLite()
+        .WithGlobalConnectionString("DataSource=app.db;Cache=Shared").ScanIn(Assembly.GetExecutingAssembly()).For.Migrations());
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+
+// Migration
+using var scope = app.Services.CreateScope();
+
+var migrationRunner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+
+if (migrationRunner != null)
+{
+    migrationRunner.ListMigrations();
+    migrationRunner.MigrateUp();
+}
+
+scope.Dispose();
+// End of Migration
 
 app.UseHttpsRedirection();
 

@@ -10,14 +10,14 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 {
     private readonly DiscordBotConfig _botConfig = options.Value;
 
-    public bool IsPrivateResponse(SocketSlashCommandData data)
+    public bool IsPrivateResponse(CommandArgs commandArgs)
     {
         return true;
     }
 
-    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, SocketSlashCommandData data)
+    public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        _ = ulong.TryParse(data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameGuildId)?.Value as string, out var guildId);
+        _ = ulong.TryParse(commandArgs.Args[SlashCommandConstants.OptionNameGuildId] as string, out var guildId);
         
         if (guildId <= 0)
         {
@@ -31,22 +31,19 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
             return new TextResponse(false, $"Guild {guildId} is an invalid guild");
         }
 
-        var action = data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameCommandAction)?.Value as string;
+        var action = commandArgs.Args[SlashCommandConstants.OptionNameCommandAction] as string;
         
-        if (data?.Options?.FirstOrDefault(x => x.Name == SlashCommandConstants.OptionNameCommandName)?.Value is not string commandName)
+        if (commandArgs.Args[SlashCommandConstants.OptionNameCommandName] is not string commandName)
         {
             return new TextResponse(false, $"{SlashCommandConstants.OptionNameCommandName} is required.");
         }
 
-        switch (action)
+        return action switch
         {
-            case SlashCommandConstants.OptionChoiceAdd:
-                return await AddCommand(commandName, guild);
-            case SlashCommandConstants.OptionChoiceDelete:
-                return await DeleteCommand(discordSocketClient, guild, commandName);
-            default:
-                return new TextResponse(false, $"Invalid action {action}");
-        }
+            SlashCommandConstants.OptionChoiceAdd => await AddCommand(commandName, guild),
+            SlashCommandConstants.OptionChoiceDelete => await DeleteCommand(discordSocketClient, guild, commandName),
+            _ => new TextResponse(false, $"Invalid action {action}"),
+        };
     }
 
     private static async Task<IResponse> AddCommand(string commandName, SocketGuild guild)
@@ -60,10 +57,6 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 
     private static async Task<IResponse> DeleteCommand(DiscordSocketClient discordSocketClient, SocketGuild guild, string commandName)
     {
-        // await guild.DeleteApplicationCommandsAsync();
-        // await ReAddDefaultCommand(discordSocketClient, guild);
-        // return new TextResponse(false, $"Command deleted");
-
         if (commandName.Equals(SlashCommandConstants.CommandNameManageCommand, StringComparison.InvariantCultureIgnoreCase))
         {
             return new TextResponse(false, $"{commandName} is a required command and can't be deleted");
@@ -81,36 +74,23 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
         return new TextResponse(false, $"Command deleted");
     }
 
-    /// <summary>
-    /// re-add the default builder to admin server if all command in admin server deleted
-    /// </summary>
-    /// <param name="guild"></param>
-    /// <returns></returns>
-    private async Task ReAddDefaultCommand(DiscordSocketClient discordSocketClient, SocketGuild guild)
-    {
-        if (_botConfig.BotManagementServerGuild == guild.Id)
-        {
-            await guild.CreateApplicationCommandAsync(DefaultSlashCommandBuilder.Build());
-        }
-    }
-
     private static Dictionary<string, SlashCommandBuilder> SlashCommandBuilders => new()
     {
         {
             SlashCommandConstants.CommandNameAI,
             new SlashCommandBuilder()
                 .WithName(SlashCommandConstants.CommandNameAI)
-                .WithDescription("Talk to ChatGPT. This command does not support conversation.")
+                .WithDescription("Talk or ask to draw an image to ChatGPT. This command does not support conversation.")
                 .AddOption(
                     new SlashCommandOptionBuilder()
-                        .WithName(SlashCommandConstants.OptionNamePrompt)
+                        .WithName(SlashCommandConstants.OptionNameMessage)
                         .WithDescription("What do you want to ask?")
                         .WithRequired(true)
                         .WithType(ApplicationCommandOptionType.String))
                 .AddOption(
                     new SlashCommandOptionBuilder()
                         .WithName(SlashCommandConstants.OptionNameEphemeral)
-                        .WithDescription("Show the reply only to you?")
+                        .WithDescription("Show the reply only to you? Default is true")
                         .WithRequired(false)
                         .WithType(ApplicationCommandOptionType.Boolean))
                 .AddOption(
