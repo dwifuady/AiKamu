@@ -139,7 +139,8 @@ public sealed class BotService(
         }
         catch (Exception ex)
         {
-            await slashCommand.RespondAsync($"Can't process your command. Exception occured while processing {slashCommand.Data.Name}. {ex.Message} ", ephemeral: true);
+            Log.Error(ex, "Error occured. {message} {stacktrace}", ex.Message, ex.StackTrace);
+            await slashCommand.FollowupAsync($"Can't process your command. Exception occured while processing {slashCommand.Data.Name}. {ex.Message} ", ephemeral: true);
         }
     }
 
@@ -249,7 +250,7 @@ public sealed class BotService(
         }
         catch (Exception ex)
         {
-            await socketCommand.RespondAsync($"Can't process your command. Exception occured while processing {socketCommand.Data.Name}. {ex.Message} ", ephemeral: true);
+            await socketCommand.FollowupAsync($"Can't process your command. Exception occured while processing {socketCommand.Data.Name}. {ex.Message} ", ephemeral: true);
         }
     }
 
