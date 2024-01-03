@@ -1,27 +1,15 @@
 ﻿using AiKamu.Common;
-using Discord.WebSocket;
 using System.Diagnostics.CodeAnalysis;
 
 namespace AiKamu.Commands;
 
 public class CommandArgs : IParsable<CommandArgs>
 {
-    private readonly SocketSlashCommandData? _slashCommandData;
     private readonly Dictionary<string, object> _commandOptions;
 
-    public CommandArgs(List<KeyValuePair<string, string>> conversations, string commandName)
+    public CommandArgs(Dictionary<string, object> commandOptions, string commandName)
     {
-        _commandOptions = new Dictionary<string, object>
-        {
-            { SlashCommandConstants.OptionNameConversation, conversations }
-        };
-        CommandName = commandName;
-    }
-
-    public CommandArgs(SocketSlashCommandData slashCommandData, string commandName)
-    {
-        _slashCommandData = slashCommandData;
-        _commandOptions = _slashCommandData.Options.ToDictionary(o => o.Name, o => o.Value);
+        _commandOptions = commandOptions;
         CommandName = commandName;
     }
 
@@ -44,8 +32,18 @@ public class CommandArgs : IParsable<CommandArgs>
     }
 
     public string CommandName { get; private set; }
-
-    public bool IsPrivateResponse => (bool)(_slashCommandData?.Options.FirstOrDefault(o => o.Name == SlashCommandConstants.OptionNameEphemeral)?.Value ?? true);
+    public bool IsPrivateResponse 
+    {
+        get {
+            _ = _commandOptions.TryGetValue(SlashCommandConstants.OptionNameEphemeral, out var privateResponseObj);
+            if (privateResponseObj is bool privateResponse)
+            {
+                return privateResponse;
+            }
+            return true;
+        }
+    } 
+    //(bool)(_commandOptions[SlashCommandConstants.OptionNameEphemeral] ?? true);
     public IReadOnlyDictionary<string, object> Args => _commandOptions;
 
     #region IParsable Implementation
@@ -56,13 +54,13 @@ public class CommandArgs : IParsable<CommandArgs>
             throw new Exception("Message can't be empty");
         }
 
-        string[] strings = s.Split([',']);
+        string[] strings = s.Split([',',' ', ':']);
         if (strings.Length < 1)
         {
             throw new OverflowException($"Invalid input parameter {s}");
         }
 
-        string command = strings[0];
+        string command = strings[0].ToLower();
         var i = s.IndexOf(strings?.FirstOrDefault(x => x == " ") ?? " ", StringComparison.Ordinal) + 1;
 
         return new CommandArgs(command, s[i..]);

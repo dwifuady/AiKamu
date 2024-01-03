@@ -48,11 +48,21 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 
     private static async Task<IResponse> AddCommand(string commandName, SocketGuild guild)
     {
-        var guildCommand = SlashCommandBuilders[commandName];
+        var slashCommandFound = SlashCommandBuilders.TryGetValue(commandName, out var slashCommandBuilder);
+        if (slashCommandFound && slashCommandBuilder != null)
+        {
+            var result = await guild.CreateApplicationCommandAsync(slashCommandBuilder.Build());
+            return new TextResponse(false, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+        }
+        
+        var messageCommandFound = MessageCommandBuilders.TryGetValue(commandName, out var messageCommandBuilder);
+        if (messageCommandFound && messageCommandBuilder != null)
+        {
+            var result = await guild.CreateApplicationCommandAsync(messageCommandBuilder.Build());
+            return new TextResponse(false, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+        }
 
-        var result = await guild.CreateApplicationCommandAsync(guildCommand.Build());
-
-        return new TextResponse(false, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+        return new TextResponse(false, $"Command {commandName} not available");
     }
 
     private static async Task<IResponse> DeleteCommand(DiscordSocketClient discordSocketClient, SocketGuild guild, string commandName)
@@ -113,6 +123,20 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
                         .WithDescription("Tracking Number")
                         .WithRequired(true)
                         .WithType(ApplicationCommandOptionType.String))
+        }
+    };
+
+    private static Dictionary<string, MessageCommandBuilder> MessageCommandBuilders => new()
+    {
+        {
+            SlashCommandConstants.CommandNameTranslateId,
+            new MessageCommandBuilder()
+                .WithName(SlashCommandConstants.CommandNameTranslateId)
+        },
+        {
+            SlashCommandConstants.CommandNameTranslateEn,
+            new MessageCommandBuilder()
+                .WithName(SlashCommandConstants.CommandNameTranslateEn)
         }
     };
 
