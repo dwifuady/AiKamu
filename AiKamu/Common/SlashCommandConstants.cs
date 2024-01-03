@@ -16,6 +16,8 @@ public static class SlashCommandConstants
 
     // OpenAi
     public const string CommandNameAI = "ai";
+    public const string CommandNameTranslateId = "terjemahkan";
+    public const string CommandNameTranslateEn = "translate";
     public const string OptionNameMessage = "message";
     public const string OptionNameEphemeral = "private";
     public const string OptionNameLanguageModel = "model";
@@ -28,5 +30,4 @@ public static class SlashCommandConstants
     // SiCepat
     public const string CommandNameSicepat = "sicepat";
     public const string OptionNameTrackingNumber = "tracking-number";
-
 }

@@ -41,6 +41,7 @@ public sealed class BotService(
         _client.Ready += ClientReady;
         _client.SlashCommandExecuted += SlashCommandHandler;
         _client.MessageReceived += MessageReceivedAsync;
+        _client.MessageCommandExecuted += MessageCommandHandler;
 
         return;
     }
@@ -108,7 +109,7 @@ public sealed class BotService(
             return;
         }
 
-        var commandArgs = new CommandArgs(slashCommand.Data, slashCommand.Data.Name);
+        var commandArgs = new CommandArgs(slashCommand.Data.Options.ToDictionary(o => o.Name, o => o.Value), slashCommand.Data.Name);
         Log.Information("Command {commandName} called by {userName}. CommandArgs {args}", commandArgs.CommandName, slashCommand.User.Username, JsonConvert.SerializeObject(commandArgs));
 
         // Getting command based on slash command
@@ -121,11 +122,11 @@ public sealed class BotService(
         }
 
         bool privateReply = command.IsPrivateResponse(commandArgs);
+        
+        // Thinking mode
+        await slashCommand.DeferAsync(ephemeral: privateReply);
         try
         {
-            // Thinking mode
-            await slashCommand.DeferAsync(ephemeral: privateReply);
-
             // save conversation if it's not a private reply
             if (!privateReply)
             {
@@ -170,6 +171,85 @@ public sealed class BotService(
         {
             var commandArgs = message.Content.Parse<CommandArgs>();
             await HandleFirstCallCommand(message, commandArgs);
+        }
+    }
+
+    /// <summary>
+    /// [WIP] MessageCommand feature
+    /// </summary>
+    /// <param name="socketCommand"></param>
+    /// <returns></returns>
+    public async Task MessageCommandHandler(SocketMessageCommand socketCommand)
+    {
+        if (_client is null)
+        {
+            return;
+        }
+        
+        var args = new Dictionary<string, object>
+        {
+            { SlashCommandConstants.OptionNameMessage, socketCommand.Data.Message.CleanContent}
+        };
+
+        var commandArgs = new CommandArgs(args, socketCommand.Data.Name);
+        Log.Information("Command {commandName} called by {userName}. CommandArgs {args}", commandArgs.CommandName, socketCommand.User.Username, JsonConvert.SerializeObject(commandArgs));
+
+        // Getting command based on slash command
+        var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
+
+        if (command == null)
+        {
+            await socketCommand.FollowupAsync($"Can't process your command. Can't find Command handler with name {socketCommand.Data.Name} ", ephemeral: true);
+            return;
+        }
+
+        bool privateReply = command.IsPrivateResponse(commandArgs);
+        
+        // Thinking mode
+        await socketCommand.DeferAsync(ephemeral: privateReply);
+        try
+        {
+            // save conversation if it's not a private reply
+            if (!privateReply)
+            {
+                await SaveInitialConversation(socketCommand.Id, commandArgs);
+            }
+
+            var response = await command.GetResponseAsync(_client, commandArgs);
+
+            switch (response)
+            {
+                case ITextResponse textResponse:
+                    {
+                        var messages = textResponse.Message?.Chunk(1900)
+                                .Select(s => new string(s))
+                                .ToList();
+
+                        var messagesCount = messages?.Count;
+
+                        if (messages == null || messagesCount == 0)
+                        {
+                            break;
+                        }
+
+                        int currentMessage = 1;
+                        foreach (var responseMessage in messages)
+                        {
+                            var prefix = string.Empty;
+                            if (messagesCount > 1)
+                            {
+                                prefix = $"({currentMessage}/{messagesCount}) {Environment.NewLine}";
+                            }
+                            var sentMessage = await socketCommand.FollowupAsync(prefix + responseMessage, ephemeral: privateReply);
+                            currentMessage++;
+                        }
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex)
+        {
+            await socketCommand.RespondAsync($"Can't process your command. Exception occured while processing {socketCommand.Data.Name}. {ex.Message} ", ephemeral: true);
         }
     }
 
@@ -227,7 +307,12 @@ public sealed class BotService(
 
         chains.Add(new(RoleConstants.RoleUser, message.CleanContent));
 
-        var commandArgs = new CommandArgs(chains, conversation.Command!);
+        var args = new Dictionary<string, object>
+        {
+            { SlashCommandConstants.OptionNameConversation, chains}
+        };
+
+        var commandArgs = new CommandArgs(args, conversation.Command!);
 
         // Getting command based on prefix
         var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
@@ -331,8 +416,29 @@ public sealed class BotService(
                     .WithRequired(true)
                     .AddChoice(SlashCommandConstants.CommandNameAI, SlashCommandConstants.CommandNameAI)
                     .AddChoice(SlashCommandConstants.CommandNameSicepat, SlashCommandConstants.CommandNameSicepat)
+                    .AddChoice(SlashCommandConstants.CommandNameTranslateId, SlashCommandConstants.CommandNameTranslateId)
+                    .AddChoice(SlashCommandConstants.CommandNameTranslateEn, SlashCommandConstants.CommandNameTranslateEn)
                     .WithType(ApplicationCommandOptionType.String));
 
         await guild.CreateApplicationCommandAsync(guildCommand.Build());
+
+        // Context Menu Command
+        var guildMessageCommandTranslateId = new MessageCommandBuilder();
+        guildMessageCommandTranslateId.WithName(SlashCommandConstants.CommandNameTranslateId);
+
+        var guildMessageCommandTranslateEn = new MessageCommandBuilder();
+        guildMessageCommandTranslateEn.WithName(SlashCommandConstants.CommandNameTranslateEn);
+
+        await guild.CreateApplicationCommandAsync(guildMessageCommandTranslateId.Build());
+        await guild.CreateApplicationCommandAsync(guildMessageCommandTranslateEn.Build());
+
+        /*
+        await guild.BulkOverwriteApplicationCommandAsync(
+        [
+            guildCommand.Build(),
+            guildMessageCommandTranslateId.Build(),
+            guildMessageCommandTranslateEn.Build()
+        ]);
+        */
     }
 }
