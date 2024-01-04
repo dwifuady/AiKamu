@@ -3,6 +3,7 @@ using AiKamu.Common;
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Options;
+using Serilog;
 
 namespace AiKamu.Commands.CommandManagement;
 
@@ -17,10 +18,11 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 
     public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        _ = ulong.TryParse(commandArgs.Args[SlashCommandConstants.OptionNameGuildId] as string, out var guildId);
+        var guildId = Convert.ToUInt64(commandArgs.Args[SlashCommandConstants.OptionNameGuildId]);
         
         if (guildId <= 0)
         {
+            Log.Warning("GuildId {GuildId} is an invalid guild", guildId);
             return new TextResponse(false, $"Guild {guildId} is an invalid guild");
         }
 
@@ -28,6 +30,7 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 
         if (guild is null)
         {
+            Log.Warning("GuildId {GuildId} is an invalid guild", guildId);
             return new TextResponse(false, $"Guild {guildId} is an invalid guild");
         }
 
@@ -48,21 +51,28 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 
     private static async Task<IResponse> AddCommand(string commandName, SocketGuild guild)
     {
+        var allCommands = await guild.GetApplicationCommandsAsync();
+        Log.Information("Adding {CommandName} started", commandName);
         var slashCommandFound = SlashCommandBuilders.TryGetValue(commandName, out var slashCommandBuilder);
-        if (slashCommandFound && slashCommandBuilder != null)
+        
+        if (slashCommandFound && slashCommandBuilder != null && !allCommands.Any(x => x.Name.Equals(commandName)))
         {
+            Log.Information("Adding {CommandName} as a slash command", commandName);
             var result = await guild.CreateApplicationCommandAsync(slashCommandBuilder.Build());
-            return new TextResponse(false, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+            return new TextResponse(true, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
         }
         
         var messageCommandFound = MessageCommandBuilders.TryGetValue(commandName, out var messageCommandBuilder);
-        if (messageCommandFound && messageCommandBuilder != null)
+        if (messageCommandFound && messageCommandBuilder != null && !allCommands.Any(x => x.Name.Equals(commandName)))
         {
+            Log.Information("Adding {CommandName} as a message command", commandName);
             var result = await guild.CreateApplicationCommandAsync(messageCommandBuilder.Build());
-            return new TextResponse(false, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+            return new TextResponse(true, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
         }
 
-        return new TextResponse(false, $"Command {commandName} not available");
+        Log.Information("{CommandName} not added because it's not available or already added ", commandName);
+
+        return new TextResponse(true, $"Command {commandName} not available or already added");
     }
 
     private static async Task<IResponse> DeleteCommand(DiscordSocketClient discordSocketClient, SocketGuild guild, string commandName)
@@ -123,6 +133,36 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
                         .WithDescription("Tracking Number")
                         .WithRequired(true)
                         .WithType(ApplicationCommandOptionType.String))
+        },
+        {
+            SlashCommandConstants.CommandNameManageCommand,
+            new SlashCommandBuilder()
+                .WithName(SlashCommandConstants.CommandNameManageCommand)
+                .WithDescription("Add Guild Command to Specific Guild")
+                .AddOption(
+                    new SlashCommandOptionBuilder()
+                        .WithName(SlashCommandConstants.OptionNameCommandAction)
+                        .WithDescription("Action")
+                        .WithRequired(true)
+                        .AddChoice(SlashCommandConstants.OptionChoiceAdd, SlashCommandConstants.OptionChoiceAdd)
+                        .AddChoice(SlashCommandConstants.OptionChoiceDelete, SlashCommandConstants.OptionChoiceDelete)
+                        .WithType(ApplicationCommandOptionType.String)
+                    )
+                .AddOption(
+                    new SlashCommandOptionBuilder()
+                        .WithName(SlashCommandConstants.OptionNameGuildId)
+                        .WithDescription("GuildId")
+                        .WithRequired(true)
+                        .WithType(ApplicationCommandOptionType.String)
+                    )
+                .AddOption(
+                    new SlashCommandOptionBuilder()
+                        .WithName(SlashCommandConstants.OptionNameCommandName)
+                        .WithDescription("CommandName")
+                        .WithRequired(true)
+                        .AddChoice(SlashCommandConstants.CommandNameAI, SlashCommandConstants.CommandNameAI)
+                        .AddChoice(SlashCommandConstants.CommandNameSicepat, SlashCommandConstants.CommandNameSicepat)
+                        .WithType(ApplicationCommandOptionType.String))
         }
     };
 
@@ -139,33 +179,4 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
                 .WithName(SlashCommandConstants.CommandNameTranslateEn)
         }
     };
-
-    private static SlashCommandBuilder DefaultSlashCommandBuilder => new SlashCommandBuilder()
-            .WithName(SlashCommandConstants.CommandNameManageCommand)
-            .WithDescription("Add Guild Command to Specific Guild")
-            .AddOption(
-                new SlashCommandOptionBuilder()
-                    .WithName(SlashCommandConstants.OptionNameCommandAction)
-                    .WithDescription("Action")
-                    .WithRequired(true)
-                    .AddChoice(SlashCommandConstants.OptionChoiceAdd, SlashCommandConstants.OptionChoiceAdd)
-                    .AddChoice(SlashCommandConstants.OptionChoiceDelete, SlashCommandConstants.OptionChoiceDelete)
-                    .WithType(ApplicationCommandOptionType.String)
-                )
-            .AddOption(
-                new SlashCommandOptionBuilder()
-                    .WithName(SlashCommandConstants.OptionNameGuildId)
-                    .WithDescription("GuildId")
-                    .WithRequired(true)
-                    .WithType(ApplicationCommandOptionType.String)
-                )
-            .AddOption(
-                new SlashCommandOptionBuilder()
-                    .WithName(SlashCommandConstants.OptionNameCommandName)
-                    .WithDescription("CommandName")
-                    .WithRequired(true)
-                    .AddChoice(SlashCommandConstants.CommandNameAI, SlashCommandConstants.CommandNameAI)
-                    .AddChoice(SlashCommandConstants.CommandNameSicepat, SlashCommandConstants.CommandNameSicepat)
-                    .WithType(ApplicationCommandOptionType.String));
-
 }

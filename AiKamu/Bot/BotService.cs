@@ -175,11 +175,6 @@ public sealed class BotService(
         }
     }
 
-    /// <summary>
-    /// [WIP] MessageCommand feature
-    /// </summary>
-    /// <param name="socketCommand"></param>
-    /// <returns></returns>
     public async Task MessageCommandHandler(SocketMessageCommand socketCommand)
     {
         if (_client is null)
@@ -250,6 +245,7 @@ public sealed class BotService(
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Error occured. {message} {stacktrace}", ex.Message, ex.StackTrace);
             await socketCommand.FollowupAsync($"Can't process your command. Exception occured while processing {socketCommand.Data.Name}. {ex.Message} ", ephemeral: true);
         }
     }
@@ -274,6 +270,7 @@ public sealed class BotService(
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Error occured. {message} {stacktrace}", ex.Message, ex.StackTrace);
             await message.Channel.SendMessageAsync($"Can't process your command. Exception occured while processing your request. {ex.Message} ", messageReference: new MessageReference(messageId: message.Id));
         }
     }
@@ -342,6 +339,7 @@ public sealed class BotService(
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Error occured. {message} {stacktrace}", ex.Message, ex.StackTrace);
             await message.Channel.SendMessageAsync($"Can't process your command. Exception occured while processing your request. {ex.Message} ", messageReference: new MessageReference(messageId: message.Id));
         }
     }
@@ -375,7 +373,6 @@ public sealed class BotService(
 
     /// <summary>
     /// This is to create a Default Command to manage Guild Command
-    /// I don't know what's the best way to manage command, so I will put this here, and manage the guild command manually using this command 
     /// </summary>
     /// <returns></returns>
     private async Task CreateDefaultGuildCommand()
@@ -388,58 +385,23 @@ public sealed class BotService(
             return;
         }
 
-        // personal server guild
-        var guild = _client.GetGuild(_botConfig!.BotManagementServerGuild);
+        // Getting manage-command service
+        var command = serviceProvider.GetKeyedService<ICommand>(SlashCommandConstants.CommandNameManageCommand);
 
-        var guildCommand = new SlashCommandBuilder()
-            .WithName(SlashCommandConstants.CommandNameManageCommand)
-            .WithDescription("Add Guild Command to Specific Guild")
-            .AddOption(
-                new SlashCommandOptionBuilder()
-                    .WithName(SlashCommandConstants.OptionNameCommandAction)
-                    .WithDescription("Action")
-                    .WithRequired(true)
-                    .AddChoice(SlashCommandConstants.OptionChoiceAdd, SlashCommandConstants.OptionChoiceAdd)
-                    .AddChoice(SlashCommandConstants.OptionChoiceDelete, SlashCommandConstants.OptionChoiceDelete)
-                    .WithType(ApplicationCommandOptionType.String)
-                )
-            .AddOption(
-                new SlashCommandOptionBuilder()
-                    .WithName(SlashCommandConstants.OptionNameGuildId)
-                    .WithDescription("GuildId")
-                    .WithRequired(true)
-                    .WithType(ApplicationCommandOptionType.String)
-                )
-            .AddOption(
-                new SlashCommandOptionBuilder()
-                    .WithName(SlashCommandConstants.OptionNameCommandName)
-                    .WithDescription("CommandName")
-                    .WithRequired(true)
-                    .AddChoice(SlashCommandConstants.CommandNameAI, SlashCommandConstants.CommandNameAI)
-                    .AddChoice(SlashCommandConstants.CommandNameSicepat, SlashCommandConstants.CommandNameSicepat)
-                    .AddChoice(SlashCommandConstants.CommandNameTranslateId, SlashCommandConstants.CommandNameTranslateId)
-                    .AddChoice(SlashCommandConstants.CommandNameTranslateEn, SlashCommandConstants.CommandNameTranslateEn)
-                    .WithType(ApplicationCommandOptionType.String));
+        if (command == null)
+        {
+            return;
+        }
 
-        await guild.CreateApplicationCommandAsync(guildCommand.Build());
+        var args = new Dictionary<string, object>
+        {
+            { SlashCommandConstants.OptionNameGuildId, _botConfig!.BotManagementServerGuild },
+            { SlashCommandConstants.OptionNameCommandAction, SlashCommandConstants.OptionChoiceAdd },
+            { SlashCommandConstants.OptionNameCommandName, SlashCommandConstants.CommandNameManageCommand }
+        };
+        
+        var commandArgs = new CommandArgs(args, SlashCommandConstants.CommandNameManageCommand);
 
-        // Context Menu Command
-        var guildMessageCommandTranslateId = new MessageCommandBuilder();
-        guildMessageCommandTranslateId.WithName(SlashCommandConstants.CommandNameTranslateId);
-
-        var guildMessageCommandTranslateEn = new MessageCommandBuilder();
-        guildMessageCommandTranslateEn.WithName(SlashCommandConstants.CommandNameTranslateEn);
-
-        await guild.CreateApplicationCommandAsync(guildMessageCommandTranslateId.Build());
-        await guild.CreateApplicationCommandAsync(guildMessageCommandTranslateEn.Build());
-
-        /*
-        await guild.BulkOverwriteApplicationCommandAsync(
-        [
-            guildCommand.Build(),
-            guildMessageCommandTranslateId.Build(),
-            guildMessageCommandTranslateEn.Build()
-        ]);
-        */
+        await command.GetResponseAsync(_client, commandArgs);
     }
 }
