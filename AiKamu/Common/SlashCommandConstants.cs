@@ -30,4 +30,8 @@ public static class SlashCommandConstants
     // SiCepat
     public const string CommandNameSicepat = "sicepat";
     public const string OptionNameTrackingNumber = "tracking-number";
+
+    public const string OptionNameQuotedMessage = "quoted-message";
+    public const string OptionNameQuotedMessageText = "quoted-message-text";
+    public const string OptionNameImageUrl = "quoted-message-image-url";
 }

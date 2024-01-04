@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using AiKamu.Common;
 using Refit;
 using Serilog;
 
@@ -80,6 +81,45 @@ public class BaseOpenAi(IOpenAiApi api)
             {
                 Log.Error(exception, exception?.Message ?? string.Empty);
                 return new (false, null, new OpenAIError { Error = new Error { Message = exception?.Message} });
+            }
+        }
+    }
+
+    protected async Task<(bool IsSuccess, OpenAiResponse? Reponse, OpenAIError? Error)> GetVisionCompletions(string message, string imageUrl)
+    {
+        var contents = new List<Content>
+        {
+            new("text", message),
+            new("image_url", new ImageUrl(imageUrl))
+        };
+
+        var messages = new List<Message>
+        {
+            new(RoleConstants.RoleUser, contents)
+        };
+        
+        var openAiRequest = new OpenAiVisionRequest("gpt-4-vision-preview", messages, 1000);
+
+        Log.Information("OpenAI Request {request}", JsonSerializer.Serialize(openAiRequest));
+        try
+        {
+            var response = await api.VisionCompletion(openAiRequest);
+            Log.Information("OpenAI Response {response}", JsonSerializer.Serialize(response));
+
+            return new(true, response, null);
+        }
+        catch (ApiException exception)
+        {
+            if (!string.IsNullOrWhiteSpace(exception?.Content))
+            {
+                var error = JsonSerializer.Deserialize<OpenAIError>(exception.Content);
+                Log.Error(exception, exception.Content);
+                return new(false, null, error);
+            }
+            else
+            {
+                Log.Error(exception, exception?.Message ?? string.Empty);
+                return new(false, null, new OpenAIError { Error = new Error { Message = exception?.Message } });
             }
         }
     }

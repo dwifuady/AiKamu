@@ -2,52 +2,35 @@
 
 namespace AiKamu.Commands.OpenAi;
 
-public class OpenAiMessage
+public class OpenAiMessage(string role, string content)
 {
-    public OpenAiMessage(string role, string content)
-    {
-        Role = role;
-        Content = content;
-    }
-
     [JsonPropertyName("role")]
-    public string Role { get; }
+    public string Role { get; } = role;
 
     [JsonPropertyName("content")]
-    public string Content { get; }
+    public string? Content { get; } = content;
 }
 
-public class OpenAiRequest
+public class OpenAiRequest(string model, IReadOnlyList<OpenAiMessage> messages, double temperature, int maxTokens, double topP, double frequencyPenalty, int presencePenalty)
 {
-    public OpenAiRequest(string model, IReadOnlyList<OpenAiMessage> messages, double temperature, int maxTokens, double topP, double frequencyPenalty, int presencePenalty)
-    {
-        Model = model;
-        Messages = messages;
-        Temperature = temperature;
-        MaxTokens = maxTokens;
-        TopP = topP;
-        FrequencyPenalty = frequencyPenalty;
-        PresencePenalty = presencePenalty;
-    }
-
     [JsonPropertyName("model")]
-    public string Model { get; }
+    public string Model { get; } = model;
 
     [JsonPropertyName("messages")]
-    public IReadOnlyList<OpenAiMessage> Messages { get; }
+    public IReadOnlyList<OpenAiMessage> Messages { get; } = messages;
 
     [JsonPropertyName("temperature")]
-    public double Temperature { get; }
+    public double Temperature { get; } = temperature;
 
     [JsonPropertyName("max_tokens")]
-    public int MaxTokens { get; }
+    public int MaxTokens { get; } = maxTokens;
 
     [JsonPropertyName("top_p")]
-    public double TopP { get; }
+    public double TopP { get; } = topP;
 
     [JsonPropertyName("frequency_penalty")]
-    public double FrequencyPenalty { get; }
+    public double FrequencyPenalty { get; } = frequencyPenalty;
 
     [JsonPropertyName("presence_penalty")]
-    public int PresencePenalty { get; }
+    public int PresencePenalty { get; } = presencePenalty;
 }

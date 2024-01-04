@@ -262,7 +262,15 @@ public sealed class BotService(
 
         try
         {
-            await SaveInitialConversation(message.Id, commandArgs);
+            // if it's (probably) a vision request (detected by attachment exists or not), then don't save conversation
+            if (message.Attachments.Count > 0 && message.Attachments.FirstOrDefault()?.Url is string attachment)
+            {
+                commandArgs.AddCommandArgs(SlashCommandConstants.OptionNameImageUrl, attachment);
+            }
+            else 
+            {
+                await SaveInitialConversation(message.Id, commandArgs);
+            }
 
             var response = await command.GetResponseAsync(_client!, commandArgs);
             await messageReplier.Reply(message, response);
@@ -283,9 +291,10 @@ public sealed class BotService(
 
         var messageChain = appDbContext.MessageChains.SingleOrDefault(r => r.Id == repliedMessage.Id);
 
-        // Ignore if it's not a reply to the bot
+        // if messageChain didn't exists or if it's not a reply to the bot, we will check if the message is calling ai to process the replied message
         if (messageChain == null || messageChain.Role == RoleConstants.RoleUser)
         {
+            await HandleReplyMessage(message, repliedMessage);
             return;
         }
 
@@ -334,6 +343,45 @@ public sealed class BotService(
 
             await appDbContext.SaveChangesAsync();
 
+            var response = await command.GetResponseAsync(_client!, commandArgs);
+            await messageReplier.Reply(message, response);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error occured. {message} {stacktrace}", ex.Message, ex.StackTrace);
+            await message.Channel.SendMessageAsync($"Can't process your command. Exception occured while processing your request. {ex.Message} ", messageReference: new MessageReference(messageId: message.Id));
+        }
+    }
+
+    private async Task HandleReplyMessage(SocketMessage message, IMessage repliedMessage)
+    {
+        var commandArgs = message.Content.Parse<CommandArgs>();
+        
+        var command = serviceProvider.GetKeyedService<ICommand>(commandArgs.CommandName);
+        if (command == null)
+        {
+            return;
+        }
+
+        var args = new Dictionary<string, object>();
+        
+        if (repliedMessage.CleanContent is string quotedMessageContentText && !string.IsNullOrWhiteSpace(quotedMessageContentText))
+        {
+            args.Add(SlashCommandConstants.OptionNameQuotedMessageText, quotedMessageContentText);
+        }
+
+        if (repliedMessage?.Attachments?.FirstOrDefault()?.Url is string quotedMessageImageUrl && !string.IsNullOrWhiteSpace(quotedMessageImageUrl))
+        {
+            args.Add(SlashCommandConstants.OptionNameImageUrl, quotedMessageImageUrl);
+        }
+
+        if (args.Count != 0)
+        {
+            commandArgs.AddCommandArgs(args);
+        }
+
+        try
+        {
             var response = await command.GetResponseAsync(_client!, commandArgs);
             await messageReplier.Reply(message, response);
         }

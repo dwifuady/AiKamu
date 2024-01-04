@@ -11,4 +11,7 @@ public interface IOpenAiApi
     [Post("/v1/images/generations")]
     [Headers("Authorization: Bearer")]
     Task<ImageGenerationResponse> GenerateImages(ImageGenerationRequest request);
+
+    [Post("/v1/chat/completions")]
+    Task<OpenAiResponse> VisionCompletion(OpenAiVisionRequest request);
 }

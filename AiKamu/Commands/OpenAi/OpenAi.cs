@@ -9,6 +9,7 @@ public sealed class OpenAi(IOpenAiApi api) : BaseOpenAi(api), ICommand
 {
     private const string _chatRequest = "chat";
     private const string _imageRequest = "draw";
+    private const string _visionRequest = "vision";
     public bool IsPrivateResponse(CommandArgs commandArgs)
     {
         return commandArgs.IsPrivateResponse;
@@ -33,20 +34,29 @@ public sealed class OpenAi(IOpenAiApi api) : BaseOpenAi(api), ICommand
         else
         {
             var message = commandArgs.Args[SlashCommandConstants.OptionNameMessage] as string;
+
+            // Check quoted message
+            _ = commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameQuotedMessageText, out var quotedMessageObj);
+            var quotedMessage = quotedMessageObj as string;
+
+            // Combine message and quoted message
+            var fullMessage = $"{message} \"{quotedMessage}\"";
             
-            if (string.IsNullOrWhiteSpace(message))
+            if (string.IsNullOrWhiteSpace(message) && string.IsNullOrWhiteSpace(quotedMessage))
             {
                 return new TextResponse(false, "Sorry, something went wrong. I can't see your message");
             }
 
-            messageType = await DetermineMessageType(message);
-            List<KeyValuePair<string, string>> messages = [new(RoleConstants.RoleUser, message)];
+            messageType = await DetermineMessageType(fullMessage);
+            List<KeyValuePair<string, string>> messages = [new(RoleConstants.RoleUser, fullMessage)];
             
             return messageType switch 
             {
                 _chatRequest => await GetChatCompletionResponse(languageModel, GetDefaultMessage(messages)),
-                _imageRequest => await GetGeneratedImage(message),
-                _ => new TextResponse(false, "I am confuse. Could you try to ask another question?")
+                _imageRequest => await GetGeneratedImage(fullMessage),
+                _visionRequest => await GetVisionResult(fullMessage, commandArgs.Args),
+                _ => await GetChatCompletionResponse(languageModel, GetDefaultMessage(messages))
+                // _ => new TextResponse(false, "I am confuse. Could you try to ask another question?")
             };
         }
     }
@@ -66,6 +76,29 @@ public sealed class OpenAi(IOpenAiApi api) : BaseOpenAi(api), ICommand
         return new TextResponse(false, "I am confuse. Could you try to ask another question?");
     }
 
+    private async Task<TextResponse> GetVisionResult(string message, IReadOnlyDictionary<string, object> args)
+    {
+        _ = args.TryGetValue(SlashCommandConstants.OptionNameImageUrl, out var imageUrlObj);
+        var imageUrl = imageUrlObj as string;
+        if (string.IsNullOrWhiteSpace(imageUrl))
+        {
+            return new TextResponse(false, "Sorry, I can't see your image.");
+        }
+
+        var (IsSuccess, Response, OpenAiErrorResponse) = await GetVisionCompletions(message, imageUrl);
+
+        if (IsSuccess && Response?.Choices != null)
+        {
+            return new TextResponse(true, Response.Choices?.FirstOrDefault()?.Message?.Content ?? "");
+        }
+        else if (!IsSuccess)
+        {
+            return new TextResponse(false, $"Sorry, there are issues when trying to get response from OpenAI api. Error: {OpenAiErrorResponse?.Error?.ErrorType}");
+        }
+        
+        return new TextResponse(false, "I am confuse. Could you try to ask another question?");
+    }
+
     private static List<OpenAiMessage> GetDefaultMessage(List<KeyValuePair<string, string>> conversations)
     {
         var messages = new List<OpenAiMessage>
@@ -81,13 +114,11 @@ public sealed class OpenAi(IOpenAiApi api) : BaseOpenAi(api), ICommand
         return messages;
     }
 
-    
-
     private async Task<string> DetermineMessageType(string message)
     {
         List<OpenAiMessage> prompt =
         [
-            new("user", $"Determine the given message. Wether it's a normal chat or requesting to draw an image. just response with 'chat' or 'draw'. If it's unclear, reply with 'none'. \"{message}\"")
+            new("user", $"Determine the given message. Wether it's a normal chat, requesting to draw an image, or requesting to describe/explain an image. just response with 'chat' for normal chat, 'draw' for draw an image, or 'vision' for describe an image. If it's unclear, reply with 'none': {message}")
         ];
         
         var (IsSuccess, Response, _) = await GetChatCompletion(SlashCommandConstants.OptionChoice35Turbo, prompt);
