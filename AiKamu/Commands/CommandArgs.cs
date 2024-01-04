@@ -5,7 +5,7 @@ namespace AiKamu.Commands;
 
 public class CommandArgs : IParsable<CommandArgs>
 {
-    private readonly Dictionary<string, object> _commandOptions;
+    private Dictionary<string, object> _commandOptions;
 
     public CommandArgs(Dictionary<string, object> commandOptions, string commandName)
     {
@@ -43,8 +43,21 @@ public class CommandArgs : IParsable<CommandArgs>
             return true;
         }
     } 
-    //(bool)(_commandOptions[SlashCommandConstants.OptionNameEphemeral] ?? true);
+    
     public IReadOnlyDictionary<string, object> Args => _commandOptions;
+
+    public void AddCommandArgs(Dictionary<string, object> args)
+    {
+        foreach(var arg in args)
+        {
+            _commandOptions.Add(arg.Key, arg.Value);
+        }
+    }
+
+    public void AddCommandArgs(string key, object value)
+    {
+        _commandOptions.Add(key, value);
+    }
 
     #region IParsable Implementation
     public static CommandArgs Parse(string s, IFormatProvider? provider)
