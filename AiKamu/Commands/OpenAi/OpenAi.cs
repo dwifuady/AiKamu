@@ -7,9 +7,9 @@ namespace AiKamu.Commands.OpenAi;
 
 public sealed class OpenAi(IOpenAiApi api) : BaseOpenAi(api), ICommand
 {
-    private const string _chatRequest = "chat";
-    private const string _imageRequest = "draw";
-    private const string _visionRequest = "vision";
+    private const string _chatRequest = "Question";
+    private const string _imageRequest = "ImageGeneration";
+    private const string _visionRequest = "Vision";
     public bool IsPrivateResponse(CommandArgs commandArgs)
     {
         return commandArgs.IsPrivateResponse;
@@ -118,7 +118,7 @@ public sealed class OpenAi(IOpenAiApi api) : BaseOpenAi(api), ICommand
     {
         List<OpenAiMessage> prompt =
         [
-            new("user", $"Determine the given message. Wether it's a normal chat, requesting to draw an image, or requesting to describe/explain an image. just response with 'chat' for normal chat, 'draw' for draw an image, or 'vision' for describe an image. If it's unclear, reply with 'none': {message}")
+            new("user", $"These are available message type of a text prompt: Question, ImageGeneration, Vision. Which one is this query asking for? If none match, respond with Unknown. query: '{message}' MessageType:")
         ];
         
         var (IsSuccess, Response, _) = await GetChatCompletion(SlashCommandConstants.OptionChoice35Turbo, prompt);
