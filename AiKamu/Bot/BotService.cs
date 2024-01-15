@@ -157,11 +157,11 @@ public sealed class BotService(
 
         if (message.Channel is SocketGuildChannel socketGuildChannel)
         {
-            Log.Information("Received a '{messageText}' message from {user} in chat {ServerName} > {ChannelName}.", message.Content, message.Author.Username, socketGuildChannel.Guild.Name, message.Channel.Name);
+            Log.Information("{user} send a '{messageText}' message  in chat {ServerName} > {ChannelName}.", message.Author.Username, message.Content, socketGuildChannel.Guild.Name, message.Channel.Name);
         }
         else
         {
-            Log.Information("Received a '{messageText}' message from {user} in chat {ChannelName}.", message.Content, message.Author.Username, message.Channel.Name);
+            Log.Information("{user} send a '{messageText}' message in chat {ChannelName}.", message.Author.Username, message.Content, message.Channel.Name);
         }
 
         if (message.Reference?.MessageId is not null && await message.Channel.GetMessageAsync(message.Reference.MessageId.Value) is { } repliedMessage)
@@ -316,6 +316,7 @@ public sealed class BotService(
 
         var args = new Dictionary<string, object>
         {
+            { SlashCommandConstants.OptionNameLanguageModel, conversation.Model ?? SlashCommandConstants.OptionChoice35Turbo },
             { SlashCommandConstants.OptionNameConversation, chains}
         };
 
@@ -400,7 +401,8 @@ public sealed class BotService(
 
         var conversation = new Conversation
         {
-            Command = commandArgs.CommandName
+            Command = commandArgs.CommandName,
+            Model = commandArgs.Args[SlashCommandConstants.OptionNameLanguageModel] as string
         };
 
         appDbContext.Conversations.Add(conversation);
