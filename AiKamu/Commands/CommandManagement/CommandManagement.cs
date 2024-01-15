@@ -18,12 +18,23 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
 
     public async Task<IResponse> GetResponseAsync(DiscordSocketClient discordSocketClient, CommandArgs commandArgs)
     {
-        var guildId = Convert.ToUInt64(commandArgs.Args[SlashCommandConstants.OptionNameGuildId]);
+        commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameGuildId, out var guildIdObj);
+        var guildId = Convert.ToUInt64(guildIdObj);
         
-        if (guildId <= 0)
+        var action = commandArgs.Args[SlashCommandConstants.OptionNameCommandAction] as string;
+        if (commandArgs.Args[SlashCommandConstants.OptionNameCommandName] is not string commandName)
         {
-            Log.Warning("GuildId {GuildId} is an invalid guild", guildId);
-            return new TextResponse(false, $"Guild {guildId} is an invalid guild");
+            return new TextResponse(false, $"{SlashCommandConstants.OptionNameCommandName} is required.");
+        }
+        
+        if (guildId <= 0) // If 0, then global command
+        {
+            return action switch
+            {
+                SlashCommandConstants.OptionChoiceAdd => await AddCommand(commandName, discordSocketClient, null),
+                SlashCommandConstants.OptionChoiceDelete => await DeleteCommand(discordSocketClient, null, commandName),
+                _ => new TextResponse(false, $"Invalid action {action}"),
+            };
         }
 
         var guild = discordSocketClient.GetGuild(guildId);
@@ -34,64 +45,96 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
             return new TextResponse(false, $"Guild {guildId} is an invalid guild");
         }
 
-        var action = commandArgs.Args[SlashCommandConstants.OptionNameCommandAction] as string;
-        
-        if (commandArgs.Args[SlashCommandConstants.OptionNameCommandName] is not string commandName)
-        {
-            return new TextResponse(false, $"{SlashCommandConstants.OptionNameCommandName} is required.");
-        }
-
         return action switch
         {
-            SlashCommandConstants.OptionChoiceAdd => await AddCommand(commandName, guild),
+            SlashCommandConstants.OptionChoiceAdd => await AddCommand(commandName, discordSocketClient, guild),
             SlashCommandConstants.OptionChoiceDelete => await DeleteCommand(discordSocketClient, guild, commandName),
             _ => new TextResponse(false, $"Invalid action {action}"),
         };
     }
 
-    private static async Task<IResponse> AddCommand(string commandName, SocketGuild guild)
+    private static async Task<IResponse> AddCommand(string commandName, DiscordSocketClient client, SocketGuild? guild)
     {
-        var allCommands = await guild.GetApplicationCommandsAsync();
-        Log.Information("Adding {CommandName} started", commandName);
         var slashCommandFound = SlashCommandBuilders.TryGetValue(commandName, out var slashCommandBuilder);
-        
-        if (slashCommandFound && slashCommandBuilder != null && !allCommands.Any(x => x.Name.Equals(commandName)))
+        if (!slashCommandFound || slashCommandBuilder is null)
         {
-            Log.Information("Adding {CommandName} as a slash command", commandName);
-            var result = await guild.CreateApplicationCommandAsync(slashCommandBuilder.Build());
-            return new TextResponse(true, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
-        }
-        
-        var messageCommandFound = MessageCommandBuilders.TryGetValue(commandName, out var messageCommandBuilder);
-        if (messageCommandFound && messageCommandBuilder != null && !allCommands.Any(x => x.Name.Equals(commandName)))
-        {
-            Log.Information("Adding {CommandName} as a message command", commandName);
-            var result = await guild.CreateApplicationCommandAsync(messageCommandBuilder.Build());
-            return new TextResponse(true, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+            Log.Information("Command {CommandName} not found", commandName);
+            return new TextResponse(true, $"Command {commandName} not available");
         }
 
-        Log.Information("{CommandName} not added because it's not available or already added ", commandName);
+        if (guild != null)
+        {
+            var allCommands = await guild.GetApplicationCommandsAsync();
+            Log.Information("Adding {CommandName} started", commandName);
+            
+            if (!allCommands.Any(x => x.Name.Equals(commandName)))
+            {
+                Log.Information("Adding {CommandName} as a slash command", commandName);
+                var result = await guild.CreateApplicationCommandAsync(slashCommandBuilder.Build());
+                return new TextResponse(true, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+            }
+            
+            var messageCommandFound = MessageCommandBuilders.TryGetValue(commandName, out var messageCommandBuilder);
+            if (messageCommandFound && messageCommandBuilder != null && !allCommands.Any(x => x.Name.Equals(commandName)))
+            {
+                Log.Information("Adding {CommandName} as a message command", commandName);
+                var result = await guild.CreateApplicationCommandAsync(messageCommandBuilder.Build());
+                return new TextResponse(true, $"Command {result.Name} created at {result.CreatedAt} for {guild.Name}");
+            }
 
-        return new TextResponse(true, $"Command {commandName} not available or already added");
+            Log.Information("{CommandName} not added because it's not available or already added ", commandName);
+
+            return new TextResponse(true, $"Command {commandName} not available or already added");
+        }
+        else // Global command
+        {
+            var allCommands = await client.GetGlobalApplicationCommandsAsync();
+
+            Log.Information("Adding {CommandName} started", commandName);
+            if (!allCommands.Any(x => x.Name.Equals(commandName)))
+            {
+                Log.Information("Adding {CommandName} as a Global Slash command", commandName);
+                var result = await client.CreateGlobalApplicationCommandAsync(slashCommandBuilder.Build());
+                return new TextResponse(true, $"Global Command {result.Name} created at {result.CreatedAt}");
+            }
+            
+            return new TextResponse(true, $"Command {commandName} not available or already added");
+        }
     }
 
-    private static async Task<IResponse> DeleteCommand(DiscordSocketClient discordSocketClient, SocketGuild guild, string commandName)
+    private static async Task<IResponse> DeleteCommand(DiscordSocketClient discordSocketClient, SocketGuild? guild, string commandName)
     {
-        if (commandName.Equals(SlashCommandConstants.CommandNameManageCommand, StringComparison.InvariantCultureIgnoreCase))
+        Log.Information("Delete {CommandName} started", commandName);
+
+        // if (commandName.Equals(SlashCommandConstants.CommandNameManageCommand, StringComparison.InvariantCultureIgnoreCase))
+        // {
+        //    return new TextResponse(false, $"{commandName} is a required command and can't be deleted");
+        // }
+
+        // global command
+        if (guild is null)
         {
-            return new TextResponse(false, $"{commandName} is a required command and can't be deleted");
+            var allGlobalCommands = await discordSocketClient.GetGlobalApplicationCommandsAsync();
+            var globalCommandToBeDeleted = allGlobalCommands.FirstOrDefault(c => c.Name == commandName);    
+            
+            if (globalCommandToBeDeleted != null)
+            {
+                await globalCommandToBeDeleted.DeleteAsync();
+            }
+            return new TextResponse(true, "Command deleted");
         }
 
-        var allCommands = await guild.GetApplicationCommandsAsync();
+        // guild command
+        var allGuildCommands = await guild.GetApplicationCommandsAsync();
         
-        var commandToBeDeleted = allCommands.FirstOrDefault(c => c.Name == commandName);
+        var guildCommandToBeDeleted = allGuildCommands.FirstOrDefault(c => c.Name == commandName);
 
-        if (commandToBeDeleted != null)
+        if (guildCommandToBeDeleted != null)
         {
-            await commandToBeDeleted.DeleteAsync();
+            await guildCommandToBeDeleted.DeleteAsync();
         }
 
-        return new TextResponse(false, $"Command deleted");
+        return new TextResponse(true, $"Command deleted");
     }
 
     private static Dictionary<string, SlashCommandBuilder> SlashCommandBuilders => new()
@@ -152,7 +195,7 @@ public class CommandManagement(IOptions<DiscordBotConfig> options) : ICommand
                     new SlashCommandOptionBuilder()
                         .WithName(SlashCommandConstants.OptionNameGuildId)
                         .WithDescription("GuildId")
-                        .WithRequired(true)
+                        .WithRequired(false)
                         .WithType(ApplicationCommandOptionType.String)
                     )
                 .AddOption(
