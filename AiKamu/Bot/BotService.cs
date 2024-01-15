@@ -90,6 +90,7 @@ public sealed class BotService(
 
         try
         {
+            await DeleteDefaultGuildCommand();
             await CreateDefaultGuildCommand();
         }
         catch (HttpException exception)
@@ -447,6 +448,36 @@ public sealed class BotService(
         {
             { SlashCommandConstants.OptionNameGuildId, _botConfig!.BotManagementServerGuild },
             { SlashCommandConstants.OptionNameCommandAction, SlashCommandConstants.OptionChoiceAdd },
+            { SlashCommandConstants.OptionNameCommandName, SlashCommandConstants.CommandNameManageCommand }
+        };
+        
+        var commandArgs = new CommandArgs(args, SlashCommandConstants.CommandNameManageCommand);
+
+        await command.GetResponseAsync(_client, commandArgs);
+    }
+
+    private async Task DeleteDefaultGuildCommand()
+    {
+        if (_client == null)
+            return;
+
+        if (_botConfig == null || _botConfig?.BotManagementServerGuild == 0)
+        {
+            return;
+        }
+
+        // Getting manage-command service
+        var command = serviceProvider.GetKeyedService<ICommand>(SlashCommandConstants.CommandNameManageCommand);
+
+        if (command == null)
+        {
+            return;
+        }
+
+        var args = new Dictionary<string, object>
+        {
+            { SlashCommandConstants.OptionNameGuildId, _botConfig!.BotManagementServerGuild },
+            { SlashCommandConstants.OptionNameCommandAction, SlashCommandConstants.OptionChoiceDelete },
             { SlashCommandConstants.OptionNameCommandName, SlashCommandConstants.CommandNameManageCommand }
         };
         
