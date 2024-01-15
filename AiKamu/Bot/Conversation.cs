@@ -4,6 +4,7 @@ public class Conversation
 {
     public int Id { get; set; }
     public string? Command { get; set; }
+    public string? Model { get; set; }
     public ICollection<MessageChain>? MessageChains { get; set; }
 }
 
