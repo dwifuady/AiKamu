@@ -400,10 +400,11 @@ public sealed class BotService(
 
         var appDbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        _ = commandArgs.Args.TryGetValue(SlashCommandConstants.OptionNameLanguageModel, out var gptModel);
         var conversation = new Conversation
         {
             Command = commandArgs.CommandName,
-            Model = commandArgs.Args[SlashCommandConstants.OptionNameLanguageModel] as string
+            Model = gptModel as string ?? SlashCommandConstants.OptionChoice35Turbo
         };
 
         appDbContext.Conversations.Add(conversation);
